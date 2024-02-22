@@ -10,4 +10,5 @@ node_modules
 !.yarn/versions
 .eslintcache
 .vscode/**
+.idea/
 .DS_Store

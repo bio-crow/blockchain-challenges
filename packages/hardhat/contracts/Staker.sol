@@ -1,31 +1,109 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.4;  //Do not change the solidity version as it negativly impacts submission grading
+pragma solidity ^0.8.4;
 
 import "hardhat/console.sol";
 import "./ExampleExternalContract.sol";
 
+
+/**
+* @title Stacker Contract
+* @author scaffold-eth
+* @notice A contract that allow users to stack ETH
+*/
 contract Staker {
+
 
   ExampleExternalContract public exampleExternalContract;
 
-  constructor(address exampleExternalContractAddress) {
-      exampleExternalContract = ExampleExternalContract(exampleExternalContractAddress);
+
+  mapping(address => uint256) public balances;
+
+
+  uint256 public constant threshold = 1 ether;
+
+
+  uint256 public deadline = block.timestamp + 30 seconds;
+
+
+  event Stake(address indexed sender, uint256 amount);
+
+
+  /**
+  * @notice Modifier that require the deadline to be reached or not
+  * @param requireReached Check if the deadline has reached or not
+  */
+  modifier deadlineReached( bool requireReached ) {
+    uint256 timeRemaining = timeLeft();
+    if( requireReached ) {
+      require(timeRemaining == 0, "Deadline is not reached yet");
+    } else {
+      require(timeRemaining > 0, "Deadline is already reached");
+    }
+    _;
   }
 
-  // Collect funds in a payable `stake()` function and track individual `balances` with a mapping:
-  // (Make sure to add a `Stake(address,uint256)` event and emit it for the frontend `All Stakings` tab to display)
+  /**
+  * @notice Modifier that require the external contract to not be completed
+  */
+  modifier stakeNotCompleted() {
+    bool completed = exampleExternalContract.completed();
+    require(!completed, "staking process already completed");
+    _;
+  }
 
 
-  // After some `deadline` allow anyone to call an `execute()` function
-  // If the deadline has passed and the threshold is met, it should call `exampleExternalContract.complete{value: address(this).balance}()`
+  /**
+  * @notice Contract Constructor
+  * @param exampleExternalContractAddress Address of the external contract that will hold stacked funds
+  */
+  constructor(address exampleExternalContractAddress) {
+    exampleExternalContract = ExampleExternalContract(exampleExternalContractAddress);
+  }
+
+  function execute() public stakeNotCompleted deadlineReached(true) {
+    uint256 contractBalance = address(this).balance;
 
 
-  // If the `threshold` was not met, allow everyone to call a `withdraw()` function to withdraw their balance
+    if(contractBalance >= threshold){
+      (bool sent,) = address(exampleExternalContract).call{value: contractBalance}(abi.encodeWithSignature("complete()"));
+      require(sent, "exampleExternalContract.complete failed");}
+
+  }
+
+  /**
+  * @notice Stake method that update the user's balance
+  */
+  function stake() public payable deadlineReached(false) stakeNotCompleted {
+
+    balances[msg.sender] += msg.value;
 
 
-  // Add a `timeLeft()` view function that returns the time left before the deadline for the frontend
+    emit Stake(msg.sender, msg.value);
+  }
 
+  /**
+  * @notice Allow users to withdraw their balance from the contract only if deadline is reached but the stake is not completed
+  */
+  function withdraw() public deadlineReached(true) stakeNotCompleted {
+    uint256 userBalance = balances[msg.sender];
 
-  // Add the `receive()` special function that receives eth and calls stake()
+    require(userBalance > 0, "You don't have balance to withdraw");
+
+    balances[msg.sender] = 0;
+
+    (bool sent,) = msg.sender.call{value: userBalance}("");
+    require(sent, "Failed to send user balance back to the user");
+  }
+
+  /**
+  * @notice The number of seconds remaining until the deadline is reached
+  */
+  function timeLeft() public view returns (uint256 timeleft) {
+    if( block.timestamp >= deadline ) {
+      return 0;
+    } else {
+      return deadline - block.timestamp;
+    }
+  }
 
 }

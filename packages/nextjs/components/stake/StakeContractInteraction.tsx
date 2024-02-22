@@ -47,7 +47,7 @@ export const StakeContractInteraction = ({ address }: { address?: string }) => {
   const { writeAsync: stakeETH } = useScaffoldContractWrite({
     contractName: "Staker",
     functionName: "stake",
-    value: "0.5",
+    value: "0.001",
   });
   const { writeAsync: execute } = useScaffoldContractWrite({
     contractName: "Staker",
@@ -114,7 +114,7 @@ export const StakeContractInteraction = ({ address }: { address?: string }) => {
             </button>
           </div>
           <button className="btn btn-primary" onClick={() => stakeETH()}>
-            🥩 Stake 0.5 ether!
+            🥩 Stake 0.001 ether!
           </button>
         </div>
       </div>
