@@ -1,39 +1,34 @@
 //
-// this script executes when you run 'yarn test'
-//
-// you can also test remote submissions like:
-// CONTRACT_ADDRESS=0x43Ab1FCd430C1f20270C2470f857f7a006117bbb yarn test --network rinkeby
-//
-// you can even run mint commands if the tests pass like:
-// yarn test && echo "PASSED" || echo "FAILED"
+// This script executes when you run 'yarn test'
 //
 import { ethers, network } from "hardhat";
-import { use, expect } from "chai";
-import { Contract } from "ethers";
+import { expect } from "chai";
+import { ExampleExternalContract, Staker } from "../typechain-types";
 
-describe("🚩 Challenge 1: 🥩 Decentralized Staking App", function () {
-  this.timeout(120000);
-
-  let exampleExternalContract: Contract;
-  let stakerContract: Contract;
+describe("🚩 Challenge 1: 🔏 Decentralized Staking App", function () {
+  let exampleExternalContract: ExampleExternalContract;
+  let stakerContract: Staker;
 
   describe("Staker", function () {
-    if (process.env.CONTRACT_ADDRESS) {
-      it("Should connect to external contract", async function () {
-        stakerContract = await ethers.getContractAt("Staker", process.env.CONTRACT_ADDRESS!);
-        console.log("     🛰 Connected to external contract", stakerContract.address);
-      });
+    const contractAddress = process.env.CONTRACT_ADDRESS;
+
+    let contractArtifact: string;
+    if (contractAddress) {
+      // For the autograder.
+      contractArtifact = `contracts/download-${contractAddress}.sol:Staker`;
     } else {
-      it("Should deploy ExampleExternalContract", async function () {
-        const ExampleExternalContract = await ethers.getContractFactory("ExampleExternalContract");
-        exampleExternalContract = await ExampleExternalContract.deploy();
-      });
-      it("Should deploy Staker", async function () {
-        const Staker = await ethers.getContractFactory("Staker");
-        stakerContract = await Staker.deploy(exampleExternalContract.address);
-      });
+      contractArtifact = "contracts/Staker.sol:Staker";
     }
 
+    it("Should deploy ExampleExternalContract", async function () {
+      const ExampleExternalContract = await ethers.getContractFactory("ExampleExternalContract");
+      exampleExternalContract = await ExampleExternalContract.deploy();
+    });
+    it("Should deploy Staker", async function () {
+      const Staker = await ethers.getContractFactory(contractArtifact);
+      stakerContract = (await Staker.deploy(await exampleExternalContract.getAddress())) as Staker;
+      console.log("\t", "🛰  Staker contract deployed on", await stakerContract.getAddress());
+    });
     describe("mintItem()", function () {
       it("Balance should go up when you stake()", async function () {
         const [owner] = await ethers.getSigners();
@@ -41,19 +36,19 @@ describe("🚩 Challenge 1: 🥩 Decentralized Staking App", function () {
         console.log("\t", " 🧑‍🏫 Tester Address: ", owner.address);
 
         const startingBalance = await stakerContract.balances(owner.address);
-        console.log("\t", " ⚖️ Starting balance: ", startingBalance.toNumber());
+        console.log("\t", " ⚖️ Starting balance: ", Number(startingBalance));
 
         console.log("\t", " 🔨 Staking...");
-        const stakeResult = await stakerContract.stake({ value: ethers.utils.parseEther("0.001") });
+        const stakeResult = await stakerContract.stake({ value: ethers.parseEther("0.001") });
         console.log("\t", " 🏷  stakeResult: ", stakeResult.hash);
 
         console.log("\t", " ⏳ Waiting for confirmation...");
         const txResult = await stakeResult.wait();
-        expect(txResult.status).to.equal(1);
+        expect(txResult?.status).to.equal(1);
 
         const newBalance = await stakerContract.balances(owner.address);
-        console.log("\t", " 🔎 New balance: ", ethers.utils.formatEther(newBalance));
-        expect(newBalance).to.equal(startingBalance.add(ethers.utils.parseEther("0.001")));
+        console.log("\t", " 🔎 New balance: ", ethers.formatEther(newBalance));
+        expect(newBalance).to.equal(startingBalance + ethers.parseEther("0.001"));
       });
 
       if (process.env.CONTRACT_ADDRESS) {
@@ -63,20 +58,20 @@ describe("🚩 Challenge 1: 🥩 Decentralized Staking App", function () {
       } else {
         it("If enough is staked and time has passed, you should be able to complete", async function () {
           const timeLeft1 = await stakerContract.timeLeft();
-          console.log("\t", "⏱ There should be some time left: ", timeLeft1.toNumber());
-          expect(timeLeft1.toNumber()).to.greaterThan(0);
+          console.log("\t", "⏱ There should be some time left: ", Number(timeLeft1));
+          expect(Number(timeLeft1)).to.greaterThan(0);
 
           console.log("\t", " 🚀 Staking a full eth!");
-          const stakeResult = await stakerContract.stake({ value: ethers.utils.parseEther("1") });
+          const stakeResult = await stakerContract.stake({ value: ethers.parseEther("1") });
           console.log("\t", " 🏷  stakeResult: ", stakeResult.hash);
 
           console.log("\t", " ⌛️ fast forward time...");
-          await network.provider.send("evm_increaseTime", [3600]);
+          await network.provider.send("evm_increaseTime", [72 * 3600]);
           await network.provider.send("evm_mine");
 
           const timeLeft2 = await stakerContract.timeLeft();
-          console.log("\t", "⏱ Time should be up now: ", timeLeft2.toNumber());
-          expect(timeLeft2.toNumber()).to.equal(0);
+          console.log("\t", "⏱ Time should be up now: ", Number(timeLeft2));
+          expect(Number(timeLeft2)).to.equal(0);
 
           console.log("\t", " 🎉 calling execute");
           const execResult = await stakerContract.execute();
@@ -88,26 +83,29 @@ describe("🚩 Challenge 1: 🥩 Decentralized Staking App", function () {
         });
 
         it("Should redeploy Staker, stake, not get enough, and withdraw", async function () {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const [owner, secondAccount] = await ethers.getSigners();
 
           const ExampleExternalContract = await ethers.getContractFactory("ExampleExternalContract");
           exampleExternalContract = await ExampleExternalContract.deploy();
+          const exampleExternalContractAddress = await exampleExternalContract.getAddress();
 
           const Staker = await ethers.getContractFactory("Staker");
-          stakerContract = await Staker.deploy(exampleExternalContract.address);
+
+          stakerContract = await Staker.deploy(exampleExternalContractAddress);
 
           console.log("\t", " 🔨 Staking...");
-          const stakeResult = await stakerContract
-            .connect(secondAccount)
-            .stake({ value: ethers.utils.parseEther("0.001") });
+          const stakeResult = await stakerContract.connect(secondAccount).stake({
+            value: ethers.parseEther("0.001"),
+          });
           console.log("\t", " 🏷  stakeResult: ", stakeResult.hash);
 
           console.log("\t", " ⏳ Waiting for confirmation...");
           const txResult = await stakeResult.wait();
-          expect(txResult.status).to.equal(1);
+          expect(txResult?.status).to.equal(1);
 
           console.log("\t", " ⌛️ fast forward time...");
-          await network.provider.send("evm_increaseTime", [3600]);
+          await network.provider.send("evm_increaseTime", [72 * 3600]);
           await network.provider.send("evm_mine");
 
           console.log("\t", " 🎉 calling execute");
@@ -119,7 +117,7 @@ describe("🚩 Challenge 1: 🥩 Decentralized Staking App", function () {
           expect(result).to.equal(false);
 
           const startingBalance = await ethers.provider.getBalance(secondAccount.address);
-          //console.log("startingBalance before withdraw", ethers.utils.formatEther(startingBalance))
+          //console.log("startingBalance before withdraw", ethers.formatEther(startingBalance))
 
           console.log("\t", " 💵 calling withdraw");
           const withdrawResult = await stakerContract.connect(secondAccount).withdraw();
@@ -127,15 +125,23 @@ describe("🚩 Challenge 1: 🥩 Decentralized Staking App", function () {
 
           // need to account for the gas cost from calling withdraw
           const tx = await ethers.provider.getTransaction(withdrawResult.hash);
+
+          if (!tx) {
+            throw new Error("Cannot resolve transaction");
+          }
+
           const receipt = await ethers.provider.getTransactionReceipt(withdrawResult.hash);
-          const gasCost = tx.gasPrice?.mul(receipt.gasUsed);
+
+          if (!receipt) {
+            throw new Error("Cannot resolve receipt");
+          }
+
+          const gasCost = tx.gasPrice * receipt.gasUsed;
 
           const endingBalance = await ethers.provider.getBalance(secondAccount.address);
-          //console.log("endingBalance after withdraw", ethers.utils.formatEther(endingBalance))
+          //console.log("endingBalance after withdraw", ethers.formatEther(endingBalance))
 
-          expect(endingBalance).to.equal(
-            startingBalance.add(ethers.utils.parseEther("0.001")).sub(ethers.BigNumber.from(gasCost)),
-          );
+          expect(endingBalance).to.equal(startingBalance + ethers.parseEther("0.001") - gasCost);
         });
       }
     });
